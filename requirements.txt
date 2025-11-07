@@ -1,4 +1,7 @@
 streamlit
-reportlab
 pandas
+matplotlib
+reportlab
 openpyxl
+python-dotenv
+numpy
