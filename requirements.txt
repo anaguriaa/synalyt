@@ -6,3 +6,7 @@ openpyxl
 python-dotenv
 numpy
 bcrypt
+
+
+
+
