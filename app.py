@@ -21,12 +21,15 @@
 # Rode: streamlit run app.py
 
 # app_synalyt_final.py
+# app_synality.py
 import os
 from pathlib import Path
 import time
 import datetime
 import sqlite3
 from io import BytesIO
+import uuid
+import secrets
 
 import streamlit as st
 import pandas as pd
@@ -39,27 +42,15 @@ from email.message import EmailMessage
 from email.utils import formataddr
 from dotenv import load_dotenv
 
-
-
-from dotenv import load_dotenv
-import os
-
-
-
-
 # -------------------------
 # Carregar .env
 load_dotenv()
 
 # SMTP / Gmail (coloque no .env)
-SMTP_EMAIL = os.getenv("OUTLOOK_EMAIL")      # use seu gmail aqui
-SMTP_PASSWORD = os.getenv("OUTLOOK_PASSWORD")  # app password do Gmail
+SMTP_EMAIL = os.getenv("OUTLOOK_EMAIL")      # use seu gmail ou outlook aqui
+SMTP_PASSWORD = os.getenv("OUTLOOK_PASSWORD")  # app password do Gmail / senha do SMTP
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
-
-# MercadoPago (opcional)
-MP_PUBLIC_KEY = os.getenv("MERCADO_PAGO_PUBLIC_KEY")
-MP_ACCESS_TOKEN = os.getenv("MERCADO_PAGO_ACCESS_TOKEN")
 
 # -------------------------
 # Paths e diretórios
@@ -68,20 +59,26 @@ try:
 except NameError:
     BASE_DIR = os.getcwd()
 
-LOGO_PATH = os.path.join(BASE_DIR, "synalytfoto.png")
-DB_PATH = os.path.join(BASE_DIR, "synalyt.db")
+LOGO_PATH = os.path.join(BASE_DIR, "synality_logo.png")
+DB_PATH = os.path.join(BASE_DIR, "synality.db")
 SAMPLE_CSV = os.path.join(BASE_DIR, "invoices.csv")
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
 os.makedirs(EXPORTS_DIR, exist_ok=True)
 
 # -------------------------
-# Streamlit config + CSS (cores Synalyt)
-st.set_page_config(page_title="Synalyt", page_icon="📊", layout="wide")
+# Streamlit config + CSS (cores Synality)
+st.set_page_config(page_title="Synality", page_icon="📊", layout="wide")
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
-:root { --syn-turquoise: #0ea5a0; --syn-blue: #06b6d4; --syn-gray: #334155; --syn-muted:#64748b; }
-html, body, [class*="css"] { font-family: 'Poppins', sans-serif; }
+:root {
+  --syn-white: #FFFFFF;
+  --syn-deep-blue: #0B3458; /* azul profundo */
+  --syn-gold: #B8860B;
+  --syn-green: #16A34A; /* botão verde */
+  --syn-muted:#64748b;
+}
+html, body, [class*="css"] { font-family: 'Poppins', sans-serif; background: var(--syn-white) !important; color: var(--syn-deep-blue); }
 
 .header-container {
   display:flex;
@@ -89,6 +86,7 @@ html, body, [class*="css"] { font-family: 'Poppins', sans-serif; }
   gap:18px;
   padding:18px 6px;
   justify-content:center;
+  background: transparent;
 }
 .header-logo {
   width:160px;
@@ -104,13 +102,11 @@ html, body, [class*="css"] { font-family: 'Poppins', sans-serif; }
 .header-title {
   font-size:28px;
   font-weight:700;
-  background: linear-gradient(90deg, var(--syn-turquoise), var(--syn-blue));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--syn-deep-blue);
   margin:0;
 }
 .header-sub {
-  color: var(--syn-gray);
+  color: #475569;
   font-size:14px;
   margin-top:4px;
 }
@@ -122,16 +118,16 @@ html, body, [class*="css"] { font-family: 'Poppins', sans-serif; }
   bottom: 20px;
   width: 320px;
   background: linear-gradient(180deg,#ffffff,#fbfdff);
-  border-left: 4px solid #B8860B;
+  border-left: 4px solid var(--syn-gold);
   box-shadow: 0 10px 30px rgba(2,6,23,0.12);
   padding: 14px;
   border-radius: 12px;
   z-index: 9999;
   font-family: 'Poppins', sans-serif;
 }
-#synalyt_pro_card h4{margin:0; font-size:16px; color:var(--syn-gray);}
+#synalyt_pro_card h4{margin:0; font-size:16px; color:var(--syn-deep-blue);}
 #synalyt_pro_card p{margin:6px 0 10px 0; color:#475569;}
-.syn-btn{display:inline-block; padding:8px 12px; border-radius:8px; background: linear-gradient(90deg,var(--syn-turquoise),var(--syn-blue)); color:white; text-decoration:none; font-weight:700; cursor:pointer}
+.syn-btn{display:inline-block; padding:8px 12px; border-radius:8px; background: var(--syn-green); color:black; text-decoration:none; font-weight:700; cursor:pointer}
 .syn-close{ position:absolute; right:8px; top:6px; background:transparent; border:none; font-weight:700; cursor:pointer; color:var(--syn-muted); font-size:16px; }
 .stButton>button { border-radius:10px; }
 </style>
@@ -146,7 +142,7 @@ def get_conn(path):
 conn = get_conn(DB_PATH)
 c = conn.cursor()
 
-# Criação de tabelas
+# Criação de tabelas (inclui password_resets)
 c.execute('''
 CREATE TABLE IF NOT EXISTS usuarios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,6 +169,14 @@ CREATE TABLE IF NOT EXISTS email_logs (
     year_month TEXT,
     sent_count INTEGER DEFAULT 0,
     UNIQUE(usuario, year_month)
+)
+''')
+c.execute('''
+CREATE TABLE IF NOT EXISTS password_resets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL
 )
 ''')
 conn.commit()
@@ -211,6 +215,51 @@ def autenticar(email: str, password: str):
         return False, str(e)
 
 # -------------------------
+# Password reset helpers
+RESET_TOKEN_TTL_SECONDS = 3600  # 1 hora
+
+def create_password_reset_token(email: str):
+    # verifica se usuário existe
+    row = c.execute("SELECT id FROM usuarios WHERE email = ?", (email,)).fetchone()
+    if not row:
+        return False, "E-mail não cadastrado."
+    token = secrets.token_urlsafe(32)
+    expires_at = (datetime.datetime.utcnow() + datetime.timedelta(seconds=RESET_TOKEN_TTL_SECONDS)).isoformat()
+    try:
+        c.execute("INSERT INTO password_resets (email, token, expires_at) VALUES (?, ?, ?)", (email, token, expires_at))
+        conn.commit()
+        return True, token
+    except sqlite3.IntegrityError:
+        # raro: token collision, gerar outro
+        return create_password_reset_token(email)
+    except Exception as e:
+        return False, str(e)
+
+def verify_reset_token(token: str):
+    row = c.execute("SELECT email, expires_at FROM password_resets WHERE token = ?", (token,)).fetchone()
+    if not row:
+        return False, "Token inválido."
+    email, expires_at = row
+    expires = datetime.datetime.fromisoformat(expires_at)
+    if datetime.datetime.utcnow() > expires:
+        # remover token expirado
+        c.execute("DELETE FROM password_resets WHERE token = ?", (token,))
+        conn.commit()
+        return False, "Token expirado."
+    return True, email
+
+def consume_reset_token_and_set_password(token: str, new_password: str):
+    ok, res = verify_reset_token(token)
+    if not ok:
+        return False, res
+    email = res
+    h = hash_password(new_password)
+    c.execute("UPDATE usuarios SET senha = ? WHERE email = ?", (h, email))
+    c.execute("DELETE FROM password_resets WHERE token = ?", (token,))
+    conn.commit()
+    return True, "Senha atualizada com sucesso."
+
+# -------------------------
 # Helpers email limit (Free = 5 / mês)
 FREE_EMAIL_LIMIT = 5
 
@@ -234,7 +283,7 @@ def increment_sent_count(usuario, year_month):
 
 # -------------------------
 # Arquivos: gerar PDF/Excel/CSV e salvar em exports
-def gerar_pdf_buffer(usuario: str, df: pd.DataFrame, titulo="Relatório Synalyt"):
+def gerar_pdf_buffer(usuario: str, df: pd.DataFrame, titulo="Relatório Synality"):
     buf = BytesIO()
     pdf = canvas.Canvas(buf, pagesize=A4)
     # logo no PDF (tenta)
@@ -307,12 +356,27 @@ def enviar_email_com_anexos(to_email: str, subject: str, body: str, attachments:
         raise ValueError("SMTP_EMAIL / SMTP_PASSWORD não configurados no .env (use App Password do Gmail).")
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"] = formataddr(("Synalyt", SMTP_EMAIL))
+    msg["From"] = formataddr(("Synality", SMTP_EMAIL))
     msg["To"] = to_email
     msg.set_content(body)
     for fname, data, mime in attachments:
         maintype, subtype = mime.split("/")
         msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=fname)
+    server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=30)
+    server.ehlo()
+    server.starttls()
+    server.login(SMTP_EMAIL, SMTP_PASSWORD)
+    server.send_message(msg)
+    server.quit()
+
+def enviar_email_simples(to_email: str, subject: str, body: str):
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
+        raise ValueError("SMTP_EMAIL / SMTP_PASSWORD não configurados no .env (use App Password do Gmail).")
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = formataddr(("Synality", SMTP_EMAIL))
+    msg["To"] = to_email
+    msg.set_content(body)
     server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=30)
     server.ehlo()
     server.starttls()
@@ -328,13 +392,13 @@ if "usuario" not in st.session_state:
     st.session_state["last_pref_id"] = None
 
 # -------------------------
-# Floating Pro card (uma vez)
+# Floating Pro card (uma vez) - botão verde com texto ASSINAR (preto)
 floating_html = """
 <div id="synalyt_pro_card">
   <button type="button" class="syn-close" id="syn_close_btn">✕</button>
-  <h4>💎 Synalyt Pro</h4>
+  <h4>💎 Synality Pro</h4>
   <p>Relatórios ilimitados • Integração SAP • Envio automático por e-mail • Prioridade</p>
-  <a class="syn-btn" id="syn_cta_btn" href="#pro_section">Assinar agora</a>
+  <a class="syn-btn" id="syn_cta_btn" href="#pro_section">ASSINAR</a>
 </div>
 <script>
 (function(){
@@ -371,26 +435,48 @@ col1, col2, col3 = st.columns([1,2,1])
 with col1:
     st.write("")
 with col2:
-    # mostra logo centralizado maior
     header_html = "<div class='header-container'>"
-    # se existir a imagem local, usa st.image (mais confiável)
-    if os.path.exists(LOGO_PATH):
-        # Para mostrar centralizado com o texto, usaremos st.markdown com img tag
-        # mas st.image funciona melhor para arquivos locais — vamos usar st.image abaixo
-        pass
     header_html += "<div class='header-text'>"
-    header_html += "<div class='header-title'>📊 Synalyt — Relatórios Inteligentes</div>"
+    header_html += "<div class='header-title'>📊 Synality — Relatórios Inteligentes</div>"
     header_html += "<div class='header-sub'>Automatize análise, exporte e envie relatórios em segundos</div>"
     header_html += "</div></div>"
-    # renderiza o texto do cabeçalho
     st.markdown(header_html, unsafe_allow_html=True)
-    # mostra logo maior acima do texto (se existir)
     if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, width=160)
+        st.image(LOGO_PATH, width=180)
 with col3:
     st.write("")
 
 st.markdown("---")
+
+# -------------------------
+# Reset token handling (if user clicked link in email)
+query_params = st.experimental_get_query_params()
+if "reset_token" in query_params:
+    token = query_params.get("reset_token")[0]
+    st.header("🔒 Redefinir senha")
+    ok, res = verify_reset_token(token)
+    if not ok:
+        st.error(res)
+        if st.button("Voltar para login"):
+            st.experimental_set_query_params()
+            st.rerun()
+    else:
+        senha_nova = st.text_input("Senha nova", type="password", key="reset_new_pwd")
+        senha_nova2 = st.text_input("Confirmar senha nova", type="password", key="reset_new_pwd2")
+        if st.button("Atualizar senha"):
+            if not senha_nova or senha_nova != senha_nova2:
+                st.error("Senhas não conferem.")
+            else:
+                ok2, res2 = consume_reset_token_and_set_password(token, senha_nova)
+                if ok2:
+                    st.success(res2)
+                    # limpa query params para evitar reuso no UI
+                    st.experimental_set_query_params()
+                    if st.button("Ir para login"):
+                        st.rerun()
+                else:
+                    st.error(res2)
+    st.stop()
 
 # -------------------------
 # Auth UI
@@ -409,6 +495,34 @@ if not st.session_state["usuario"]:
                 st.rerun()
             else:
                 st.error(res)
+        st.write("") 
+        # link e fluxo de "Esqueci a senha"
+        st.markdown("### Esqueceu a senha?")
+        forgot_email = st.text_input("Informe seu e-mail para receber o link de recuperação", key="forgot_email")
+        if st.button("Enviar link de recuperação"):
+            if not forgot_email:
+                st.error("Informe um e-mail.")
+            else:
+                ok, res = create_password_reset_token(forgot_email)
+                if not ok:
+                    st.error(res)
+                else:
+                    token = res
+                    # contrói link - tenta pegar URL atual (Streamlit Cloud ou local)
+                    try:
+                        base_url = st.runtime.scriptrunner.script_run_ctx.get("server").server_address  # fallback (may be None)
+                    except Exception:
+                        base_url = None
+                    # Melhor alternativa: usar request url a partir de window.location não disponível; vamos construir link relativo
+                    reset_link = f"{st.get_url()}?reset_token={token}" if hasattr(st, "get_url") else f"?reset_token={token}"
+                    # Envia e-mail com instruções
+                    body = f"Olá,\n\nVocê solicitou redefinir sua senha do Synality. Clique no link abaixo para criar uma nova senha (válido por 1 hora):\n\n{reset_link}\n\nSe você não solicitou, ignore este e-mail.\n\nEquipe Synality"
+                    try:
+                        enviar_email_simples(forgot_email, "Recuperação de senha Synality", body)
+                        st.success("Link de recuperação enviado por e-mail (verifique caixa de spam).")
+                    except Exception as e:
+                        st.error("Erro ao enviar e-mail: " + str(e))
+
     with right:
         st.header("🆕 Criar conta")
         new_email = st.text_input("E-mail (novo)", key="reg_email")
@@ -434,11 +548,8 @@ if st.sidebar.button("Sair"):
 page = st.sidebar.radio("Menu", ["Dashboard", "Integrações", "Pro (benefícios)", "Relatórios", "Conta"])
 
 # -------------------------
-# Dashboard (gera + salva + auto-envia respeitando limite)
-# -------------------------
-# Dashboard (gera + salva + auto-envia respeitando limite)
+# Dashboard
 if page == "Dashboard":
-
     st.subheader("📊 Painel")
     st.markdown("Faça upload do CSV/XLSX (colunas: issue_date / value) ou use o CSV de exemplo.")
 
@@ -500,7 +611,7 @@ if page == "Dashboard":
             pass
 
     # ---- Gerar relatórios ----
-    pdf_buf = gerar_pdf_buffer(st.session_state["usuario"], df, titulo="Relatório Synalyt")
+    pdf_buf = gerar_pdf_buffer(st.session_state["usuario"], df, titulo="Relatório Synality")
     xlsx_buf = df_to_excel_bytes(df)
     csv_bytes = df_to_csv_bytes(df)
 
@@ -530,8 +641,8 @@ if page == "Dashboard":
 
             enviar_email_com_anexos(
                 send_to,
-                "Relatório Synalyt — automático",
-                "Segue em anexo seu relatório Synalyt.",
+                "Relatório Synality — automático",
+                "Segue em anexo seu relatório Synality.",
                 attachments
             )
 
@@ -557,10 +668,8 @@ if page == "Dashboard":
 
     # Envio manual
     if st.button("Enviar por e-mail agora (manual)"):
-
         ym = ym_str()
         can_send = True
-
         if st.session_state.get("plano") != "pro":
             if get_sent_count(st.session_state["usuario"], ym) >= FREE_EMAIL_LIMIT:
                 can_send = False
@@ -575,20 +684,19 @@ if page == "Dashboard":
                     (os.path.basename(csv_path), open(csv_path, "rb").read(), "text/csv")
                 ]
 
-                enviar_email_com_anexos(send_to, "Relatório Synalyt", "Segue em anexo seu relatório Synalyt.", attachments)
+                enviar_email_com_anexos(send_to, "Relatório Synality", "Segue em anexo seu relatório Synality.", attachments)
 
                 if st.session_state.get("plano") != "pro":
                     increment_sent_count(st.session_state["usuario"], ym)
 
                 st.success("E-mail enviado ✅")
-
             except Exception as e:
                 st.error("Erro ao enviar e-mail: " + str(e))
 
 # -------------------------
 # Pro (benefícios) + checkout (simples)
 elif page == "Pro (benefícios)":
-    st.header("Synalyt Pro — Benefícios")
+    st.header("Synality Pro — Benefícios")
     st.markdown("""
     **Por que assinar Pro?**
     - Relatórios ilimitados (PDF/Excel/CSV)
@@ -649,3 +757,4 @@ elif page == "Conta":
 # -------------------------
 # Mantém o floating card no final também
 st.markdown(floating_html, unsafe_allow_html=True)
+ing_html, unsafe_allow_html=True)
