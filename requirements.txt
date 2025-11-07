@@ -6,6 +6,7 @@ openpyxl
 python-dotenv
 numpy
 bcrypt
+xlsxwriter
 
 
 
