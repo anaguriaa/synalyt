@@ -42,6 +42,70 @@ from email.message import EmailMessage
 from email.utils import formataddr
 from dotenv import load_dotenv
 
+
+import streamlit as st
+
+# CONFIG + CSS
+st.set_page_config(page_title="Synality", page_icon="📊", layout="wide")
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+:root {
+  --syn-white: #FFFFFF;
+  --syn-deep-blue: #0B3458;
+  --syn-gold: #B8860B;
+  --syn-green: #16A34A;
+  --syn-muted:#64748b;
+}
+
+html, body, [class*="css"] {
+  font-family: 'Poppins', sans-serif !important;
+  background: var(--syn-white) !important;
+  color: var(--syn-deep-blue) !important;
+}
+
+/* HEADER */
+.header-container {
+  display:flex;
+  align-items:center;
+  gap:18px;
+  padding:18px 6px;
+  justify-content:center;
+  background: transparent;
+}
+.header-logo {
+  width:160px;
+  height:auto;
+}
+.header-title {
+  font-size:32px;
+  font-weight:700;
+  color: var(--syn-deep-blue);
+}
+.header-sub {
+  color: #475569;
+  font-size:14px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
+col1, col2 = st.columns([1, 4])
+
+with col1:
+    st.image("synalityfoto.png", use_column_width=True)
+
+with col2:
+    st.markdown("""
+        <div class='header-title'>Synality</div>
+        <div class='header-sub'>Arquitetura em nuvem • Análise de dados • Automação empresarial</div>
+    """, unsafe_allow_html=True)
+
+
+
+
 # -------------------------
 # Carregar .env
 load_dotenv()
@@ -59,45 +123,47 @@ try:
 except NameError:
     BASE_DIR = os.getcwd()
 
-LOGO_PATH = os.path.join(BASE_DIR, "synality_logo.png")
+LOGO_PATH = os.path.join(BASE_DIR, "synalityfoto.png")
 DB_PATH = os.path.join(BASE_DIR, "synality.db")
 SAMPLE_CSV = os.path.join(BASE_DIR, "invoices.csv")
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
 os.makedirs(EXPORTS_DIR, exist_ok=True)
 
 # -------------------------
-# Streamlit config + CSS (cores Synality)
 st.set_page_config(page_title="Synality", page_icon="📊", layout="wide")
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+
 :root {
   --syn-white: #FFFFFF;
   --syn-deep-blue: #0B3458; /* azul profundo */
-  --syn-gold: #B8860B;
-  --syn-green: #16A34A; /* botão verde */
+  --syn-gold: #D4AF37;      /* dourado real */
+  --syn-gold-soft: #F5E6A4; /* dourado claro */
+  --syn-green: #16A34A;     /* botão verde */
   --syn-muted:#64748b;
 }
-html, body, [class*="css"] { font-family: 'Poppins', sans-serif; background: var(--syn-white) !important; color: var(--syn-deep-blue); }
 
+/* Fundo geral + fonte */
+html, body, [class*="css"] { 
+  font-family: 'Poppins', sans-serif; 
+  background: var(--syn-white) !important; 
+  color: var(--syn-deep-blue); 
+}
+
+/* HEADER */
 .header-container {
   display:flex;
   align-items:center;
   gap:18px;
   padding:18px 6px;
   justify-content:center;
-  background: transparent;
 }
 .header-logo {
   width:160px;
   height:auto;
   border-radius:8px;
   box-shadow: 0 8px 20px rgba(2,6,23,0.06);
-}
-.header-text {
-  display:flex;
-  flex-direction:column;
-  align-items:flex-start;
 }
 .header-title {
   font-size:28px;
@@ -111,27 +177,72 @@ html, body, [class*="css"] { font-family: 'Poppins', sans-serif; background: var
   margin-top:4px;
 }
 
-/* Floating card */
+/* ✅ CARD DOURADO PREMIUM */
 #synalyt_pro_card {
   position: fixed;
   right: 20px;
   bottom: 20px;
   width: 320px;
-  background: linear-gradient(180deg,#ffffff,#fbfdff);
-  border-left: 4px solid var(--syn-gold);
-  box-shadow: 0 10px 30px rgba(2,6,23,0.12);
-  padding: 14px;
-  border-radius: 12px;
+  background: linear-gradient(135deg, var(--syn-gold), var(--syn-gold-soft));
+  border-left: 5px solid var(--syn-gold);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  padding: 16px;
+  border-radius: 14px;
   z-index: 9999;
-  font-family: 'Poppins', sans-serif;
 }
-#synalyt_pro_card h4{margin:0; font-size:16px; color:var(--syn-deep-blue);}
-#synalyt_pro_card p{margin:6px 0 10px 0; color:#475569;}
-.syn-btn{display:inline-block; padding:8px 12px; border-radius:8px; background: var(--syn-green); color:black; text-decoration:none; font-weight:700; cursor:pointer}
-.syn-close{ position:absolute; right:8px; top:6px; background:transparent; border:none; font-weight:700; cursor:pointer; color:var(--syn-muted); font-size:16px; }
-.stButton>button { border-radius:10px; }
+
+#synalyt_pro_card h4{
+    margin:0;
+    font-size:18px;
+    color: var(--syn-deep-blue);
+    font-weight: 700;
+}
+
+#synalyt_pro_card p{
+    margin:8px 0 14px 0;
+    font-size:14px;
+    color:#222;
+}
+
+/* ✅ BOTÃO ASSINAR */
+.syn-btn {
+    display:inline-block; 
+    padding:10px 14px; 
+    border-radius:8px; 
+    background: var(--syn-green); 
+    color:white !important; 
+    text-decoration:none; 
+    font-weight:700; 
+    cursor:pointer;
+}
+
+/* BOTÃO FECHAR */
+.syn-close{
+    position:absolute; 
+    right:8px; 
+    top:6px; 
+    background:transparent; 
+    border:none; 
+    font-weight:700; 
+    cursor:pointer; 
+    color:#222; 
+    font-size:20px;
+}
+
+/* BOTÕES DO STREAMLIT */
+.stButton>button { 
+    border-radius:10px; 
+    background: var(--syn-green); 
+    color:white !important;
+    font-weight:600;
+}
+.stButton>button:hover { 
+    background:#0f7f39; 
+}
+
 </style>
 """, unsafe_allow_html=True)
+
 
 # -------------------------
 # DB connection (simple)
@@ -757,4 +868,3 @@ elif page == "Conta":
 # -------------------------
 # Mantém o floating card no final também
 st.markdown(floating_html, unsafe_allow_html=True)
-ing_html, unsafe_allow_html=True)
