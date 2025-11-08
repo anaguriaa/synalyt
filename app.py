@@ -44,6 +44,14 @@ from dotenv import load_dotenv
 
 
 import streamlit as st
+import streamlit as st
+from PIL import Image
+
+st.set_page_config(page_title="Synality", layout="wide")
+
+# Carregar logo
+logo = Image.open("synalityfoto.png")
+st.image(logo, width=250)
 
 # CONFIG + CSS
 st.set_page_config(page_title="Synality", page_icon="📊", layout="wide")
